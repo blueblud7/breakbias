@@ -39,7 +39,8 @@ pip install -r requirements.txt
 
 cp .env.example .env        # API 키 입력
 python collect.py --list-themes
-python collect.py --theme 반도체
+python collect.py --theme 반도체            # 1) 수집 + dedup → items
+python analyze.py --theme 반도체 --show     # 2) 분류 + 집계 → daily_aggregates
 ```
 
 ## 프로젝트 구조
@@ -53,18 +54,25 @@ src/sentiment_radar/
   models.py                # Item 표준 스키마
   db/{schema.sql,database.py}
   collectors/              # BaseCollector + naver_news + newsapi (+ M3에서 확장)
-  pipeline/dedup.py        # URL 정규화 + rapidfuzz 제목 유사도
-collect.py                 # 수집 CLI 엔트리포인트
-tests/                     # pytest
+  llm/                     # classifier(gpt-5-nano, 방어파싱·재시도) + cost(예산가드)
+  pipeline/
+    dedup.py               # URL 정규화 + rapidfuzz 제목 유사도
+    classify.py            # 미분류 배치 분류 오케스트레이션
+    aggregate.py           # 순수 Python 집계 엔진 (Raw/가중 NSI, 괴리, 쏠림)
+collect.py                 # 수집 CLI
+analyze.py                 # 분류 + 집계 CLI
+tests/                     # pytest (28개)
 ```
 
 ## 마일스톤 진행
 
 - [x] **M1** — 골격 + DB 스키마 + config + 뉴스 수집기 2종(Naver/NewsAPI) + dedup
-- [ ] **M2** — gpt-5-nano 분류 파이프라인 + 집계 엔진 + NSI
+- [x] **M2** — gpt-5-nano 분류 파이프라인(재시도·비용로깅·예산가드) + 집계 엔진 + NSI
 - [ ] **M3** — 유튜브 / 블로그 / 리포트 스크레이퍼 / Google Trends / Reddit
 - [ ] **M4** — deepseek 총평 + Streamlit 4페이지 + 가격 오버레이
 - [ ] **M5** — APScheduler 자동 수집 + 실패 알림 + 30일 백필 + 비용 대시보드
+- [ ] **M6** — 예측 일지(Brier·캘리브레이션) + 사전 규칙(수정이력·알림) — *확증편향 교정 코어*
+- [ ] **M7** — 센티먼트-수익률 백테스트 (시차상관·Granger·이벤트스터디·WFO 피처)
 
 ## 테스트
 

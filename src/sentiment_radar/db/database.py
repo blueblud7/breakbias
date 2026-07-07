@@ -104,6 +104,119 @@ class Database:
             (theme, limit),
         ).fetchall()
 
+    # --- classifications ---
+    def fetch_unclassified(self, theme: str, limit: int = 500) -> list[sqlite3.Row]:
+        """아직 분류되지 않은 아이템 (classifications 에 없는 것)."""
+        return self.conn.execute(
+            """
+            SELECT i.* FROM items i
+            LEFT JOIN classifications c ON c.item_id = i.id
+            WHERE i.theme = ? AND c.id IS NULL
+            ORDER BY i.collected_at ASC
+            LIMIT ?
+            """,
+            (theme, limit),
+        ).fetchall()
+
+    def insert_classification(self, row: dict[str, Any]) -> int | None:
+        cur = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO classifications (
+                item_id, sentiment, confidence, one_line_summary, key_argument,
+                time_horizon, is_opinion, model, classified_at
+            ) VALUES (
+                :item_id, :sentiment, :confidence, :one_line_summary, :key_argument,
+                :time_horizon, :is_opinion, :model, :classified_at
+            )
+            """,
+            row,
+        )
+        self.conn.commit()
+        return cur.lastrowid if cur.rowcount else None
+
+    def fetch_classified(self, theme: str) -> list[sqlite3.Row]:
+        """분류 완료된 아이템 + 분류결과 조인 (집계 입력용)."""
+        return self.conn.execute(
+            """
+            SELECT
+                i.id, i.source_type, i.reach_score,
+                i.published_at, i.collected_at,
+                c.sentiment, c.confidence, c.is_opinion
+            FROM items i
+            JOIN classifications c ON c.item_id = i.id
+            WHERE i.theme = ?
+            """,
+            (theme,),
+        ).fetchall()
+
+    # --- aggregates ---
+    def upsert_aggregate(self, theme: str, bucket_date: str, scope: str,
+                         metrics: dict[str, Any], computed_at: str) -> None:
+        row = {
+            "theme": theme, "bucket_date": bucket_date, "scope": scope,
+            "computed_at": computed_at, **metrics,
+        }
+        self.conn.execute(
+            """
+            INSERT INTO daily_aggregates (
+                theme, bucket_date, scope, n_items,
+                pct_pos_raw, pct_neu_raw, pct_neg_raw, nsi_raw,
+                pct_pos_wt, pct_neu_wt, pct_neg_wt, nsi_wt,
+                extreme_flag, divergence, computed_at
+            ) VALUES (
+                :theme, :bucket_date, :scope, :n_items,
+                :pct_pos_raw, :pct_neu_raw, :pct_neg_raw, :nsi_raw,
+                :pct_pos_wt, :pct_neu_wt, :pct_neg_wt, :nsi_wt,
+                :extreme_flag, :divergence, :computed_at
+            )
+            ON CONFLICT(theme, bucket_date, scope) DO UPDATE SET
+                n_items=excluded.n_items,
+                pct_pos_raw=excluded.pct_pos_raw, pct_neu_raw=excluded.pct_neu_raw,
+                pct_neg_raw=excluded.pct_neg_raw, nsi_raw=excluded.nsi_raw,
+                pct_pos_wt=excluded.pct_pos_wt, pct_neu_wt=excluded.pct_neu_wt,
+                pct_neg_wt=excluded.pct_neg_wt, nsi_wt=excluded.nsi_wt,
+                extreme_flag=excluded.extreme_flag, divergence=excluded.divergence,
+                computed_at=excluded.computed_at
+            """,
+            row,
+        )
+        self.conn.commit()
+
+    def fetch_aggregates(self, theme: str, scope: str = "all",
+                         limit: int = 30) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """
+            SELECT * FROM daily_aggregates
+            WHERE theme = ? AND scope = ?
+            ORDER BY bucket_date DESC LIMIT ?
+            """,
+            (theme, scope, limit),
+        ).fetchall()
+
+    # --- cost log ---
+    def add_cost_log(self, *, bucket_date: str, model: str, call_type: str,
+                     n_calls: int, prompt_tokens: int, completion_tokens: int,
+                     cost_usd: float) -> None:
+        from ..models import utcnow_iso
+        self.conn.execute(
+            """
+            INSERT INTO llm_cost_log (
+                bucket_date, model, call_type, n_calls,
+                prompt_tokens, completion_tokens, cost_usd, logged_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (bucket_date, model, call_type, n_calls,
+             prompt_tokens, completion_tokens, cost_usd, utcnow_iso()),
+        )
+        self.conn.commit()
+
+    def today_cost_usd(self, bucket_date: str) -> float:
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0.0) AS s FROM llm_cost_log WHERE bucket_date = ?",
+            (bucket_date,),
+        ).fetchone()
+        return float(row["s"])
+
 
 def get_db(path: Path | str | None = None, *, init: bool = True) -> Database:
     """DB 핸들 획득 (필요 시 스키마 초기화)."""
