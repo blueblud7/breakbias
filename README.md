@@ -43,6 +43,21 @@ python collect.py --theme 반도체            # 1) 수집 + dedup → items
 python analyze.py --theme 반도체 --show     # 2) 분류 + 집계 → daily_aggregates
 ```
 
+### 확증편향 교정 코어 (M6)
+
+```bash
+# 오늘 데이터를 보기 '전에' 내 예측을 먼저 기록
+python journal.py predict --theme 반도체 --view positive --confidence 70 \
+    --horizon 14 --symbol 1001 --basis "HBM 수요 지속"
+python journal.py resolve --theme 반도체    # 만기 예측을 실제 수익률로 자동 판정
+python journal.py status  --theme 반도체    # 적중률·Brier·캘리브레이션(과신 직면)
+
+# 상황 발생 '전에' 대응 규칙 등록 (수정하면 이력이 남는다)
+python journal.py rule-add --name "극단 약세" --metric nsi_wt --op "<=" \
+    --value -60 --consecutive 3 --action "역발상 관점 검토" --theme 반도체
+python journal.py rule-check --theme 반도체  # 조건 충족 시 텔레그램 알림
+```
+
 ## 프로젝트 구조
 
 ```
@@ -59,9 +74,14 @@ src/sentiment_radar/
     dedup.py               # URL 정규화 + rapidfuzz 제목 유사도
     classify.py            # 미분류 배치 분류 오케스트레이션
     aggregate.py           # 순수 Python 집계 엔진 (Raw/가중 NSI, 괴리, 쏠림)
+  predictions.py           # 예측 일지 (Brier·캘리브레이션)  [M6]
+  rules.py                 # 사전 규칙 엔진 (조건 DSL·수정이력·알림)  [M6]
+  prices.py                # pykrx/yfinance 가격 조회 (예측 판정·백테스트)
+  notify.py                # 텔레그램 알림 (미설정 시 로그)
 collect.py                 # 수집 CLI
 analyze.py                 # 분류 + 집계 CLI
-tests/                     # pytest (28개)
+journal.py                 # 예측/규칙 CLI (M6)
+tests/                     # pytest (42개)
 ```
 
 ## 마일스톤 진행
@@ -71,7 +91,7 @@ tests/                     # pytest (28개)
 - [ ] **M3** — 유튜브 / 블로그 / 리포트 스크레이퍼 / Google Trends / Reddit
 - [ ] **M4** — deepseek 총평 + Streamlit 4페이지 + 가격 오버레이
 - [ ] **M5** — APScheduler 자동 수집 + 실패 알림 + 30일 백필 + 비용 대시보드
-- [ ] **M6** — 예측 일지(Brier·캘리브레이션) + 사전 규칙(수정이력·알림) — *확증편향 교정 코어*
+- [x] **M6** — 예측 일지(Brier·캘리브레이션) + 사전 규칙(수정이력·알림) — *확증편향 교정 코어*
 - [ ] **M7** — 센티먼트-수익률 백테스트 (시차상관·Granger·이벤트스터디·WFO 피처)
 
 ## 테스트

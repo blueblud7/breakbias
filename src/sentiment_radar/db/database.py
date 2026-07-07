@@ -217,6 +217,163 @@ class Database:
         ).fetchone()
         return float(row["s"])
 
+    # --- M6: predictions ---
+    def insert_prediction(self, row: dict[str, Any]) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO predictions (
+                theme, created_at, my_view, confidence, horizon_days, basis,
+                target_symbol, entry_date, entry_close, resolve_date, outcome
+            ) VALUES (
+                :theme, :created_at, :my_view, :confidence, :horizon_days, :basis,
+                :target_symbol, :entry_date, :entry_close, :resolve_date, 'pending'
+            )
+            """,
+            row,
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def fetch_due_predictions(self, as_of_date: str) -> list[sqlite3.Row]:
+        """만기 도래(resolve_date <= as_of) 하고 아직 미판정인 예측."""
+        return self.conn.execute(
+            """
+            SELECT * FROM predictions
+            WHERE outcome = 'pending' AND resolve_date <= ?
+            ORDER BY resolve_date ASC
+            """,
+            (as_of_date,),
+        ).fetchall()
+
+    def resolve_prediction(self, pred_id: int, *, exit_close: float,
+                           actual_return: float, outcome: str, brier: float,
+                           resolved_at: str) -> None:
+        self.conn.execute(
+            """
+            UPDATE predictions SET
+                exit_close = ?, actual_return = ?, outcome = ?,
+                brier = ?, resolved_at = ?
+            WHERE id = ?
+            """,
+            (exit_close, actual_return, outcome, brier, resolved_at, pred_id),
+        )
+        self.conn.commit()
+
+    def fetch_predictions(self, theme: str | None = None, *,
+                          resolved_only: bool = False,
+                          limit: int = 1000) -> list[sqlite3.Row]:
+        q = "SELECT * FROM predictions"
+        conds, params = [], []
+        if theme:
+            conds.append("theme = ?")
+            params.append(theme)
+        if resolved_only:
+            conds.append("outcome != 'pending'")
+        if conds:
+            q += " WHERE " + " AND ".join(conds)
+        q += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        return self.conn.execute(q, params).fetchall()
+
+    def has_prediction_on(self, theme: str, entry_date: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM predictions WHERE theme = ? AND entry_date = ? LIMIT 1",
+            (theme, entry_date),
+        ).fetchone()
+        return row is not None
+
+    # --- M6: rules + rule_history ---
+    def insert_rule(self, row: dict[str, Any]) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO rules (
+                theme, name, condition_json, action_text, active,
+                created_at, updated_at
+            ) VALUES (
+                :theme, :name, :condition_json, :action_text, 1,
+                :created_at, :updated_at
+            )
+            """,
+            row,
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def update_rule(self, rule_id: int, *, condition_json: str | None = None,
+                    action_text: str | None = None, name: str | None = None,
+                    updated_at: str) -> None:
+        cur = self.fetch_rule(rule_id)
+        if cur is None:
+            raise KeyError(f"rule {rule_id} 없음")
+        self.conn.execute(
+            """
+            UPDATE rules SET
+                name = ?, condition_json = ?, action_text = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                name if name is not None else cur["name"],
+                condition_json if condition_json is not None else cur["condition_json"],
+                action_text if action_text is not None else cur["action_text"],
+                updated_at, rule_id,
+            ),
+        )
+        self.conn.commit()
+
+    def set_rule_active(self, rule_id: int, active: bool, updated_at: str) -> None:
+        self.conn.execute(
+            "UPDATE rules SET active = ?, updated_at = ? WHERE id = ?",
+            (1 if active else 0, updated_at, rule_id),
+        )
+        self.conn.commit()
+
+    def set_rule_triggered(self, rule_id: int, at: str) -> None:
+        self.conn.execute(
+            "UPDATE rules SET last_triggered_at = ? WHERE id = ?", (at, rule_id)
+        )
+        self.conn.commit()
+
+    def fetch_rule(self, rule_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM rules WHERE id = ?", (rule_id,)
+        ).fetchone()
+
+    def fetch_rules(self, *, active_only: bool = True) -> list[sqlite3.Row]:
+        q = "SELECT * FROM rules"
+        if active_only:
+            q += " WHERE active = 1"
+        q += " ORDER BY created_at ASC"
+        return self.conn.execute(q).fetchall()
+
+    def insert_rule_history(self, rule_id: int, change_type: str,
+                            snapshot_json: str, changed_at: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO rule_history (rule_id, change_type, snapshot_json, changed_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (rule_id, change_type, snapshot_json, changed_at),
+        )
+        self.conn.commit()
+
+    def fetch_rule_history(self, rule_id: int) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM rule_history WHERE rule_id = ? ORDER BY changed_at ASC",
+            (rule_id,),
+        ).fetchall()
+
+    def fetch_aggregates_asc(self, theme: str, scope: str, limit: int) -> list[sqlite3.Row]:
+        """최근 N일을 날짜 오름차순으로 (규칙의 consecutive_days 평가용)."""
+        rows = self.conn.execute(
+            """
+            SELECT * FROM daily_aggregates
+            WHERE theme = ? AND scope = ?
+            ORDER BY bucket_date DESC LIMIT ?
+            """,
+            (theme, scope, limit),
+        ).fetchall()
+        return list(reversed(rows))
+
 
 def get_db(path: Path | str | None = None, *, init: bool = True) -> Database:
     """DB 핸들 획득 (필요 시 스키마 초기화)."""
