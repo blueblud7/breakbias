@@ -1,0 +1,33 @@
+# Secrets
+.env
+*.env
+!.env.example
+
+# Data / DB
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+.idea/
+.vscode/
+
+# Cost / cache
+.cache/
+cost_logs/

@@ -1,0 +1,40 @@
+# --- Core ---
+pyyaml>=6.0
+python-dotenv>=1.0
+requests>=2.31
+rapidfuzz>=3.6          # 제목 유사도 기반 중복 제거
+
+# --- HTTP / scraping (M3) ---
+beautifulsoup4>=4.12
+lxml>=5.0
+
+# --- Data / aggregation ---
+python-dateutil>=2.9
+
+# --- LLM (M2/M4) ---
+openai>=1.30            # gpt-5-nano 분류
+# deepseek 는 OpenAI 호환 SDK 사용 (base_url 교체)
+
+# --- Sources (M3) ---
+pytrends>=4.9           # Google Trends
+google-api-python-client>=2.0   # YouTube Data API
+youtube-transcript-api>=0.6
+praw>=7.7               # Reddit
+# telethon>=1.34        # (2순위) 텔레그램
+
+# --- Prices (M4) ---
+yfinance>=0.2
+pykrx>=1.0.45
+
+# --- API / scheduler (M5) ---
+fastapi>=0.110
+uvicorn>=0.29
+apscheduler>=3.10
+
+# --- Dashboard (M4) ---
+streamlit>=1.33
+plotly>=5.20
+pandas>=2.2
+
+# --- Dev ---
+pytest>=8.0

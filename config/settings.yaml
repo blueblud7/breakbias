@@ -1,0 +1,44 @@
+# ==========================================================
+# 전역 설정 — 소스 가중치, 집계 파라미터, 수집 정책
+# 테마별 키워드는 config/themes/*.yaml 에서 관리
+# ==========================================================
+
+# --- 소스 가중치 (가중 NSI 계산에 사용) ---
+# weight = source_weight * log(1 + reach_score) * confidence
+source_weights:
+  report: 3.0      # 증권사 리포트
+  news_kr: 2.0     # 국내 뉴스
+  news_global: 2.0 # 해외 뉴스
+  youtube: 1.5
+  blog: 1.0
+  reddit: 0.7      # 커뮤니티
+  telegram: 0.7
+
+# --- 소스 그룹 (기관 vs 리테일 괴리 분석용) ---
+source_groups:
+  institutional: [report, news_kr, news_global]
+  retail: [blog, youtube, reddit, telegram]
+
+# --- 집계 파라미터 ---
+aggregation:
+  extreme_threshold: 0.75   # 긍정/부정 어느 한쪽이 이 비율 이상이면 쏠림 경보
+  min_confidence: 0.0       # 이 미만 신뢰도는 집계 제외 (0 = 제외 안 함)
+  exclude_non_opinion: true # is_opinion=false (단순 사실보도) 는 집계 제외
+
+# --- 수집 정책 (스크레이핑 예의) ---
+collection:
+  request_interval_sec: 2.0        # 요청 간 최소 간격
+  user_agent: "market-sentiment-radar/0.1 (+https://github.com/blueblud7/breakbias)"
+  respect_robots_txt: true
+  max_content_chars: 3000          # content_snippet 최대 길이
+  per_source_limit: 100            # 소스·키워드당 최대 수집 건수
+
+# --- 중복 제거 ---
+dedup:
+  title_similarity_threshold: 90   # rapidfuzz (0~100)
+  lookback_days: 3                 # 과거 며칠치 아이템과 비교할지
+
+# --- LLM 비용 ---
+llm:
+  daily_budget_usd: 2.0            # 초과 시 수집만 하고 분류 스킵
+  classify_max_retries: 1          # JSON 파싱 실패 시 재시도 횟수

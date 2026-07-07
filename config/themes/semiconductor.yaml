@@ -1,0 +1,53 @@
+# ==========================================================
+# 테마: 반도체
+# 테마별로 독립 집계. 새 테마는 이 파일을 복사해서 추가.
+# ==========================================================
+
+theme: semiconductor
+display_name: 반도체
+
+# 사용자 뷰 (확증편향 방지용) — 대시보드에서 "반대 센티먼트 우선 정렬"에 사용
+# positive | negative | neutral | none
+my_view: none
+
+# --- 국내 소스용 키워드 (ko) ---
+keywords_ko:
+  - 반도체
+  - 삼성전자
+  - SK하이닉스
+  - 코스피
+  - HBM
+  - 메모리 반도체
+
+# --- 해외 소스용 키워드 (en) ---
+keywords_en:
+  - semiconductor
+  - SOX
+  - Samsung Electronics
+  - SK Hynix
+  - AI capex
+  - HBM
+
+# --- 관련성 필터: 아래 단어가 하나도 없으면 우연 매칭으로 보고 제외 ---
+# (규칙 필터 1차 통과 후 애매한 것만 LLM 에 위임)
+relevance_must_include_any:
+  - 반도체
+  - 칩
+  - chip
+  - semiconductor
+  - HBM
+  - 메모리
+  - memory
+  - 파운드리
+  - foundry
+  - 삼성
+  - 하이닉스
+  - hynix
+  - samsung
+  - nvidia
+  - 엔비디아
+
+# --- 가격 오버레이 (M4) ---
+price_symbols:
+  kospi: "1001"        # pykrx 지수코드 (코스피)
+  sox: "^SOX"          # yfinance (필라델피아 반도체 지수)
