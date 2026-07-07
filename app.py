@@ -23,6 +23,7 @@ import streamlit as st
 from plotly.subplots import make_subplots
 
 from sentiment_radar import dashboard_data as dd
+from sentiment_radar import backtest as bt
 from sentiment_radar.config import list_themes, load_theme, settings
 from sentiment_radar.db import get_db
 from sentiment_radar.health import cost_summary, health_report
@@ -276,11 +277,69 @@ def page_ops(db, theme: str):
         st.dataframe(pd.DataFrame(cs["by_model"]), use_container_width=True)
 
 
+# ---------------- 페이지 6 : 백테스트 ----------------
+def page_backtest(db, theme: str):
+    st.header("센티먼트-수익률 백테스트")
+    st.caption("논조 변화가 실제 등락에 선행하는지 검증. " + bt.INTERPRETATION_GUIDE)
+
+    symbol = load_theme(theme).price_symbols.get("kospi", "1001")
+    series = bt.build_joined_series(db, theme, symbol)
+    if len(series) < 10:
+        st.warning(f"조인된 거래일 {len(series)}일 — 데이터 부족. "
+                   "scripts/backfill.py(가격) + 수집/분류 또는 seed_demo 후 재시도.")
+        return
+    st.write(f"조인된 거래일: **{len(series)}일** (vs {symbol})")
+
+    # 1) 시차 상관
+    st.subheader("① 시차 상관 (NSI → 수익률)")
+    st.caption("lag>0 = 센티먼트가 수익률에 선행(예측력), lag<0 = 후행")
+    max_lag = st.slider("최대 lag", 3, 15, 10)
+    lc = bt.lag_correlation(series, "nsi_wt", "ret", max_lag)
+    lags = sorted(lc)
+    vals = [lc[k] for k in lags]
+    fig = go.Figure(go.Bar(x=lags, y=[v if v is not None else 0 for v in vals],
+                           marker_color=["#1f77b4" if k >= 0 else "#bbbbbb" for k in lags]))
+    fig.add_vline(x=0, line_dash="dash", line_color="gray")
+    fig.update_layout(title="lag별 상관계수", height=300, xaxis_title="lag(일)",
+                      yaxis_title="corr", margin=dict(t=40, b=10))
+    st.plotly_chart(fig, use_container_width=True)
+
+    gp = bt.granger_pvalues(series, "nsi_change", "ret", max_lag=min(5, max_lag))
+    if gp:
+        sig = [f"lag {l}: p={p}{' ★' if p < 0.05 else ''}" for l, p in gp.items()]
+        st.write("**Granger 인과** (NSI변화→수익률, p<0.05=선행 시사): " + " · ".join(sig))
+    else:
+        st.caption("Granger: 표본 부족 또는 statsmodels 미설치")
+
+    # 2) 이벤트 스터디
+    st.subheader("② 이벤트 스터디")
+    bt.mark_events(series)
+    for key, name in [("event_swing", "NSI 5일 급변(≥30pt)"),
+                      ("event_extreme", "극단 쏠림(≥75%)")]:
+        es = bt.event_study(series, key, name)
+        st.markdown(f"**{name}** — 이벤트 {es.n_events}회")
+        rows = []
+        for h in es.horizons:
+            e, b = es.horizons[h], es.baseline[h]
+            rows.append({"지평": f"+{h}일", "이벤트 평균%": e.get("mean"),
+                         "이벤트 승률": e.get("win_rate"), "기준선 평균%": b.get("mean"),
+                         "이벤트 n": e.get("n")})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+    # 3) WFO 피처 export
+    st.subheader("③ WFO 피처 export")
+    st.caption("일별 NSI/변화율/괴리/극단 → parquet. ※ 반드시 아웃오브샘플 성과로 판정")
+    if st.button("sentiment_features 내보내기"):
+        out = bt.export_features(db, theme, symbol, f"data/{theme}_features.parquet")
+        st.success(f"저장: {out}" if out else "데이터 없음")
+
+
 def main():
     st.sidebar.title("📡 Sentiment Radar")
     theme = _theme_pick()
     page = st.sidebar.radio("페이지",
-                            ["오늘의 뷰", "시계열 추이", "소스 드릴다운", "설정", "운영/비용"])
+                            ["오늘의 뷰", "시계열 추이", "소스 드릴다운", "설정",
+                             "운영/비용", "백테스트"])
     db = _db()
     if page == "오늘의 뷰":
         page_today(db, theme)
@@ -290,8 +349,10 @@ def main():
         page_sources(db, theme)
     elif page == "설정":
         page_settings(db, theme)
-    else:
+    elif page == "운영/비용":
         page_ops(db, theme)
+    else:
+        page_backtest(db, theme)
 
     st.sidebar.markdown("---")
     st.sidebar.caption("⚠️ 이 시스템의 출력은 참고용 정량화 도구이며 **매매 신호가 아닙니다**.")

@@ -70,6 +70,17 @@ streamlit run app.py                      # 4페이지 대시보드
 - **페이지 3** 소스 드릴다운: 소스×날짜 히트맵 + 아이템 테이블(**내 뷰 반대 우선 정렬**)
 - **페이지 4** 설정: 테마/내 뷰/가중치
 - **페이지 5** 운영/비용: 데이터 무결성 체크 + LLM 일별 비용(예산 대비)
+- **페이지 6** 백테스트: 시차상관·Granger·이벤트스터디 + WFO 피처 export
+
+### 백테스트 (M7)
+
+```bash
+python scripts/backtest.py --theme 반도체 --symbol 1001 --export data/feat.parquet
+```
+- **시차 상관 + Granger**: NSI(및 변화율/괴리) ↔ 지수 수익률, lag −10~+10 (lag>0=센티먼트 선행)
+- **이벤트 스터디**: NSI 5일 급변(≥30pt)·극단 쏠림(≥75%) 이후 +5/+20일 수익률 vs 기준선
+- **WFO 피처**: `sentiment_features.parquet` 일별 export (※ 반드시 아웃오브샘플로 판정)
+- 해석: 센티먼트 수준은 동행/후행이 일반적, 예측력은 극단값·변화율에서만 기대. **유의하지 않으면 "선행성 없음"이 정상 결과.**
 
 ### 운영 (M5)
 
@@ -99,6 +110,7 @@ src/sentiment_radar/
   dashboard_data.py        # 대시보드 데이터 준비 (순수 함수, pandas 비의존)
   orchestrate.py           # 통합 파이프라인 러너 (단계 격리 + 실패 알림)  [M5]
   health.py                # 데이터 무결성 체크 + 비용 요약  [M5]
+  backtest.py              # 시차상관·Granger·이벤트스터디·WFO 피처  [M7]
   llm/                     # classifier(gpt-5-nano) + commentary(deepseek 총평) + cost
   pipeline/
     dedup.py               # URL 정규화 + rapidfuzz 제목 유사도
@@ -111,13 +123,14 @@ src/sentiment_radar/
 collect.py                 # 수집 CLI
 analyze.py                 # 분류 + 집계 + 총평 CLI
 journal.py                 # 예측/규칙 CLI (M6)
-app.py                     # Streamlit 대시보드 5페이지 (M4/M5)
+app.py                     # Streamlit 대시보드 6페이지 (M4/M5/M7)
 scheduler.py               # APScheduler 자동 수집 (M5)
 api.py                     # FastAPI 수집 스케줄러 API (M5)
 scripts/seed_demo.py       # 합성 30일 데모 데이터
 scripts/backfill.py        # 가격 백필 + 재집계 (M5)
 scripts/health_check.py    # 데이터 무결성 체크 (M5)
-tests/                     # pytest (72개)
+scripts/backtest.py        # 센티먼트-수익률 백테스트 리포트 (M7)
+tests/                     # pytest (79개)
 ```
 
 ## 마일스톤 진행
@@ -128,7 +141,9 @@ tests/                     # pytest (72개)
 - [x] **M4** — deepseek 총평(반론 Top3) + Streamlit 4페이지 + 가격 오버레이
 - [x] **M5** — APScheduler 자동수집 + FastAPI + 실패알림 + 백필 + 비용/무결성
 - [x] **M6** — 예측 일지(Brier·캘리브레이션) + 사전 규칙(수정이력·알림) — *확증편향 교정 코어*
-- [ ] **M7** — 센티먼트-수익률 백테스트 (시차상관·Granger·이벤트스터디·WFO 피처)
+- [x] **M7** — 센티먼트-수익률 백테스트 (시차상관·Granger·이벤트스터디·WFO 피처)
+
+**전 마일스톤(M1–M7) 완료.** 실데이터 투입은 `.env` 에 API 키 입력 후 `python collect.py` 부터.
 
 ## 테스트
 
