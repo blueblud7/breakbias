@@ -193,6 +193,74 @@ class Database:
             (theme, scope, limit),
         ).fetchall()
 
+    def fetch_classified_detailed(self, theme: str) -> list[sqlite3.Row]:
+        """집계/총평 입력용: 아이템 + 분류 상세 조인."""
+        return self.conn.execute(
+            """
+            SELECT
+                i.id, i.source_type, i.source_name, i.title, i.url,
+                i.reach_score, i.published_at, i.collected_at,
+                c.sentiment, c.confidence, c.is_opinion,
+                c.one_line_summary, c.key_argument, c.time_horizon
+            FROM items i
+            JOIN classifications c ON c.item_id = i.id
+            WHERE i.theme = ?
+            ORDER BY i.published_at DESC
+            """,
+            (theme,),
+        ).fetchall()
+
+    def fetch_aggregate_one(self, theme: str, bucket_date: str,
+                            scope: str = "all") -> sqlite3.Row | None:
+        return self.conn.execute(
+            """SELECT * FROM daily_aggregates
+               WHERE theme = ? AND bucket_date = ? AND scope = ?""",
+            (theme, bucket_date, scope),
+        ).fetchone()
+
+    # --- M4: commentary ---
+    def upsert_commentary(self, *, theme: str, bucket_date: str, commentary: str,
+                          counter_args: str, model: str, generated_at: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO daily_commentary (theme, bucket_date, commentary, counter_args, model, generated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(theme, bucket_date) DO UPDATE SET
+                commentary = excluded.commentary, counter_args = excluded.counter_args,
+                model = excluded.model, generated_at = excluded.generated_at
+            """,
+            (theme, bucket_date, commentary, counter_args, model, generated_at),
+        )
+        self.conn.commit()
+
+    def fetch_commentary(self, theme: str, bucket_date: str | None = None) -> sqlite3.Row | None:
+        if bucket_date:
+            return self.conn.execute(
+                "SELECT * FROM daily_commentary WHERE theme = ? AND bucket_date = ?",
+                (theme, bucket_date),
+            ).fetchone()
+        return self.conn.execute(
+            "SELECT * FROM daily_commentary WHERE theme = ? ORDER BY bucket_date DESC LIMIT 1",
+            (theme,),
+        ).fetchone()
+
+    def fetch_price_series(self, symbol: str, limit: int = 90) -> list[sqlite3.Row]:
+        rows = self.conn.execute(
+            """SELECT * FROM price_history WHERE symbol = ?
+               ORDER BY bucket_date DESC LIMIT ?""",
+            (symbol, limit),
+        ).fetchall()
+        return list(reversed(rows))
+
+    def distinct_source_types(self, theme: str) -> list[str]:
+        """daily_aggregates 에서 소스타입 스코프만 (all/institutional/retail 제외)."""
+        rows = self.conn.execute(
+            """SELECT DISTINCT scope FROM daily_aggregates
+               WHERE theme = ? AND scope NOT IN ('all','institutional','retail')""",
+            (theme,),
+        ).fetchall()
+        return [r["scope"] for r in rows]
+
     # --- cost log ---
     def add_cost_log(self, *, bucket_date: str, model: str, call_type: str,
                      n_calls: int, prompt_tokens: int, completion_tokens: int,

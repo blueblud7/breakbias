@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 from sentiment_radar.config import load_theme  # noqa: E402
 from sentiment_radar.db import get_db  # noqa: E402
 from sentiment_radar.llm.classifier import Classifier  # noqa: E402
+from sentiment_radar.llm.commentary import CommentaryGenerator  # noqa: E402
+from sentiment_radar.models import to_kst_date, utcnow_iso  # noqa: E402
 from sentiment_radar.pipeline import compute_and_store, run_classification  # noqa: E402
 
 
@@ -40,6 +42,7 @@ def main() -> None:
     ap.add_argument("--theme", required=True)
     ap.add_argument("--limit", type=int, default=500, help="분류 배치 최대 건수")
     ap.add_argument("--aggregate-only", action="store_true", help="분류 건너뛰고 집계만")
+    ap.add_argument("--commentary", action="store_true", help="deepseek 일별 총평 생성")
     ap.add_argument("--show", action="store_true", help="최근 집계(all 스코프) 출력")
     args = ap.parse_args()
 
@@ -52,6 +55,11 @@ def main() -> None:
 
         summary = compute_and_store(db, theme.theme)
         log.info("집계 완료: %d개 날짜 버킷", len(summary))
+
+        if args.commentary:
+            gen = CommentaryGenerator()
+            res = gen.generate(db, theme.theme, to_kst_date(utcnow_iso()))
+            log.info("총평 생성: %s", "완료" if res else "스킵(키/집계 없음)")
 
         if args.show:
             print(f"\n=== {theme.display_name} 최근 집계 (scope=all) ===")

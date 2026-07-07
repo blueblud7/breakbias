@@ -58,6 +58,18 @@ python journal.py rule-add --name "극단 약세" --metric nsi_wt --op "<=" \
 python journal.py rule-check --theme 반도체  # 조건 충족 시 텔레그램 알림
 ```
 
+### 대시보드 (M4)
+
+```bash
+python scripts/seed_demo.py               # (API 키 없을 때) 합성 30일 데모 데이터
+python analyze.py --theme 반도체 --commentary   # deepseek 총평 생성 (키 있을 때)
+streamlit run app.py                      # 4페이지 대시보드
+```
+- **페이지 1** 오늘의 뷰: 게이지(가중 NSI) + Raw/가중 스택바 + 총평·**반론 Top3(항상 노출)**
+- **페이지 2** 시계열: 100% 스택영역 + NSI/가격 다이버전스 + 기관vs리테일 + 관심도
+- **페이지 3** 소스 드릴다운: 소스×날짜 히트맵 + 아이템 테이블(**내 뷰 반대 우선 정렬**)
+- **페이지 4** 설정: 테마/내 뷰/가중치
+
 ## 프로젝트 구조
 
 ```
@@ -71,7 +83,8 @@ src/sentiment_radar/
   collectors/              # BaseCollector + 6종: naver_news/newsapi/naver_blog/
                            #   youtube/reddit/report_naver (+ twitter 스텁)
   attention.py             # Google Trends 관심도 트랙 (센티먼트와 분리)
-  llm/                     # classifier(gpt-5-nano, 방어파싱·재시도) + cost(예산가드)
+  dashboard_data.py        # 대시보드 데이터 준비 (순수 함수, pandas 비의존)
+  llm/                     # classifier(gpt-5-nano) + commentary(deepseek 총평) + cost
   pipeline/
     dedup.py               # URL 정규화 + rapidfuzz 제목 유사도
     classify.py            # 미분류 배치 분류 오케스트레이션
@@ -81,9 +94,11 @@ src/sentiment_radar/
   prices.py                # pykrx/yfinance 가격 조회 (예측 판정·백테스트)
   notify.py                # 텔레그램 알림 (미설정 시 로그)
 collect.py                 # 수집 CLI
-analyze.py                 # 분류 + 집계 CLI
+analyze.py                 # 분류 + 집계 + 총평 CLI
 journal.py                 # 예측/규칙 CLI (M6)
-tests/                     # pytest (50개)
+app.py                     # Streamlit 대시보드 4페이지 (M4)
+scripts/seed_demo.py       # 합성 30일 데모 데이터
+tests/                     # pytest (63개)
 ```
 
 ## 마일스톤 진행
@@ -91,7 +106,7 @@ tests/                     # pytest (50개)
 - [x] **M1** — 골격 + DB 스키마 + config + 뉴스 수집기 2종(Naver/NewsAPI) + dedup
 - [x] **M2** — gpt-5-nano 분류 파이프라인(재시도·비용로깅·예산가드) + 집계 엔진 + NSI
 - [x] **M3** — 블로그 / 유튜브 / 리포트 스크레이퍼 / Reddit + Google Trends(attention)
-- [ ] **M4** — deepseek 총평 + Streamlit 4페이지 + 가격 오버레이
+- [x] **M4** — deepseek 총평(반론 Top3) + Streamlit 4페이지 + 가격 오버레이
 - [ ] **M5** — APScheduler 자동 수집 + 실패 알림 + 30일 백필 + 비용 대시보드
 - [x] **M6** — 예측 일지(Brier·캘리브레이션) + 사전 규칙(수정이력·알림) — *확증편향 교정 코어*
 - [ ] **M7** — 센티먼트-수익률 백테스트 (시차상관·Granger·이벤트스터디·WFO 피처)
