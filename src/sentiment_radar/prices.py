@@ -24,6 +24,10 @@ class PriceProvider(Protocol):
         """on_or_before(YYYY-MM-DD) 시점 또는 그 이전 최근 종가."""
         ...
 
+    def get_series(self, symbol: str, start: str, end: str) -> dict[str, float]:
+        """[start, end] 구간 일별 종가 {YYYY-MM-DD: close}. 백필용."""
+        ...
+
 
 class MarketDataProvider:
     """pykrx + yfinance 실제 조회 구현."""
@@ -55,6 +59,47 @@ class MarketDataProvider:
         if df is None or df.empty:
             return None
         return float(df["종가"].iloc[-1])
+
+    def get_series(self, symbol: str, start: str, end: str) -> dict[str, float]:
+        code = _KOSPI_ALIASES.get(symbol.lower(), symbol)
+        try:
+            s = datetime.strptime(start, "%Y-%m-%d").date()
+            e = datetime.strptime(end, "%Y-%m-%d").date()
+        except ValueError:
+            return {}
+        if code.isdigit():
+            return self._pykrx_series(code, s, e)
+        return self._yf_series(symbol, s, e)
+
+    def _pykrx_series(self, code: str, s: date, e: date) -> dict[str, float]:
+        try:
+            from pykrx import stock
+            df = stock.get_index_ohlcv(s.strftime("%Y%m%d"), e.strftime("%Y%m%d"), code)
+        except Exception as ex:
+            log.error("[prices] pykrx series %s 실패: %s", code, ex)
+            return {}
+        if df is None or df.empty:
+            return {}
+        return {d.strftime("%Y-%m-%d"): float(c) for d, c in df["종가"].items()}
+
+    def _yf_series(self, symbol: str, s: date, e: date) -> dict[str, float]:
+        try:
+            import yfinance as yf
+            df = yf.download(symbol, start=s.strftime("%Y-%m-%d"),
+                             end=(e + timedelta(days=1)).strftime("%Y-%m-%d"),
+                             progress=False, auto_adjust=True)
+        except Exception as ex:
+            log.error("[prices] yfinance series %s 실패: %s", symbol, ex)
+            return {}
+        if df is None or df.empty:
+            return {}
+        out = {}
+        for idx, row in df.iterrows():
+            close = row["Close"]
+            out[idx.strftime("%Y-%m-%d")] = float(
+                close.iloc[0] if hasattr(close, "iloc") else close
+            )
+        return out
 
     def _yf_close(self, symbol: str, target: date) -> float | None:
         try:
@@ -96,3 +141,7 @@ class DictPriceProvider:
         if not candidates:
             return None
         return self._flat[(symbol, candidates[-1])]
+
+    def get_series(self, symbol: str, start: str, end: str) -> dict[str, float]:
+        return {d: self._flat[(s, d)] for (s, d) in self._flat
+                if s == symbol and start <= d <= end}

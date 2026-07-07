@@ -285,6 +285,54 @@ class Database:
         ).fetchone()
         return float(row["s"])
 
+    def cost_by_date(self, limit: int = 30) -> list[sqlite3.Row]:
+        """일자별 비용/토큰/호출수 집계 (비용 대시보드)."""
+        return self.conn.execute(
+            """
+            SELECT bucket_date,
+                   SUM(cost_usd) AS cost_usd,
+                   SUM(n_calls) AS n_calls,
+                   SUM(prompt_tokens) AS prompt_tokens,
+                   SUM(completion_tokens) AS completion_tokens
+            FROM llm_cost_log
+            GROUP BY bucket_date
+            ORDER BY bucket_date DESC LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    def cost_by_model(self, limit: int = 10) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            """SELECT model, SUM(cost_usd) AS cost_usd, SUM(n_calls) AS n_calls
+               FROM llm_cost_log GROUP BY model ORDER BY cost_usd DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+
+    # --- M5: 무결성/헬스 ---
+    def count_unclassified(self, theme: str) -> int:
+        row = self.conn.execute(
+            """SELECT COUNT(*) AS n FROM items i
+               LEFT JOIN classifications c ON c.item_id = i.id
+               WHERE i.theme = ? AND c.id IS NULL""",
+            (theme,),
+        ).fetchone()
+        return int(row["n"])
+
+    def last_collected_at(self, theme: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT MAX(collected_at) AS m FROM items WHERE theme = ?", (theme,)
+        ).fetchone()
+        return row["m"]
+
+    def aggregate_dates(self, theme: str, limit: int = 40) -> list[str]:
+        rows = self.conn.execute(
+            """SELECT DISTINCT bucket_date FROM daily_aggregates
+               WHERE theme = ? AND scope = 'all'
+               ORDER BY bucket_date DESC LIMIT ?""",
+            (theme, limit),
+        ).fetchall()
+        return [r["bucket_date"] for r in rows]
+
     # --- M6: predictions ---
     def insert_prediction(self, row: dict[str, Any]) -> int:
         cur = self.conn.execute(

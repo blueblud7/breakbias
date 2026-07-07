@@ -69,6 +69,19 @@ streamlit run app.py                      # 4페이지 대시보드
 - **페이지 2** 시계열: 100% 스택영역 + NSI/가격 다이버전스 + 기관vs리테일 + 관심도
 - **페이지 3** 소스 드릴다운: 소스×날짜 히트맵 + 아이템 테이블(**내 뷰 반대 우선 정렬**)
 - **페이지 4** 설정: 테마/내 뷰/가중치
+- **페이지 5** 운영/비용: 데이터 무결성 체크 + LLM 일별 비용(예산 대비)
+
+### 운영 (M5)
+
+```bash
+python scheduler.py                        # APScheduler 하루 2회(16:00/06:30 KST) 자동 수집
+python scheduler.py --once                 # 즉시 1회 (수동/테스트)
+uvicorn api:app                            # 수집 스케줄러 API (/health /status /cost /run)
+python scripts/backfill.py --theme 반도체 --days 365 --prices  # 가격 백필
+python scripts/health_check.py             # 데이터 무결성 체크 (문제 시 exit 1)
+```
+- 각 파이프라인은 **단계별로 격리**되어 하나가 실패해도 나머지는 진행하고, 실패는 텔레그램으로 알림
+- LLM 호출은 **일 예산 초과 시 분류 스킵** (수집물은 다음날 처리)
 
 ## 프로젝트 구조
 
@@ -84,6 +97,8 @@ src/sentiment_radar/
                            #   youtube/reddit/report_naver (+ twitter 스텁)
   attention.py             # Google Trends 관심도 트랙 (센티먼트와 분리)
   dashboard_data.py        # 대시보드 데이터 준비 (순수 함수, pandas 비의존)
+  orchestrate.py           # 통합 파이프라인 러너 (단계 격리 + 실패 알림)  [M5]
+  health.py                # 데이터 무결성 체크 + 비용 요약  [M5]
   llm/                     # classifier(gpt-5-nano) + commentary(deepseek 총평) + cost
   pipeline/
     dedup.py               # URL 정규화 + rapidfuzz 제목 유사도
@@ -96,9 +111,13 @@ src/sentiment_radar/
 collect.py                 # 수집 CLI
 analyze.py                 # 분류 + 집계 + 총평 CLI
 journal.py                 # 예측/규칙 CLI (M6)
-app.py                     # Streamlit 대시보드 4페이지 (M4)
+app.py                     # Streamlit 대시보드 5페이지 (M4/M5)
+scheduler.py               # APScheduler 자동 수집 (M5)
+api.py                     # FastAPI 수집 스케줄러 API (M5)
 scripts/seed_demo.py       # 합성 30일 데모 데이터
-tests/                     # pytest (63개)
+scripts/backfill.py        # 가격 백필 + 재집계 (M5)
+scripts/health_check.py    # 데이터 무결성 체크 (M5)
+tests/                     # pytest (72개)
 ```
 
 ## 마일스톤 진행
@@ -107,7 +126,7 @@ tests/                     # pytest (63개)
 - [x] **M2** — gpt-5-nano 분류 파이프라인(재시도·비용로깅·예산가드) + 집계 엔진 + NSI
 - [x] **M3** — 블로그 / 유튜브 / 리포트 스크레이퍼 / Reddit + Google Trends(attention)
 - [x] **M4** — deepseek 총평(반론 Top3) + Streamlit 4페이지 + 가격 오버레이
-- [ ] **M5** — APScheduler 자동 수집 + 실패 알림 + 30일 백필 + 비용 대시보드
+- [x] **M5** — APScheduler 자동수집 + FastAPI + 실패알림 + 백필 + 비용/무결성
 - [x] **M6** — 예측 일지(Brier·캘리브레이션) + 사전 규칙(수정이력·알림) — *확증편향 교정 코어*
 - [ ] **M7** — 센티먼트-수익률 백테스트 (시차상관·Granger·이벤트스터디·WFO 피처)
 

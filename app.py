@@ -25,6 +25,7 @@ from plotly.subplots import make_subplots
 from sentiment_radar import dashboard_data as dd
 from sentiment_radar.config import list_themes, load_theme, settings
 from sentiment_radar.db import get_db
+from sentiment_radar.health import cost_summary, health_report
 
 POS, NEU, NEG = "#2ca02c", "#9e9e9e", "#d62728"  # 녹/회/빨
 
@@ -246,10 +247,40 @@ def _save_my_view(theme: str, view: str) -> None:
                     encoding="utf-8")
 
 
+# ---------------- 페이지 5 : 운영/비용 ----------------
+def page_ops(db, theme: str):
+    st.header("운영 / 비용")
+
+    st.subheader("데이터 무결성")
+    rep = health_report(db, theme)
+    st.write("전체 상태:", "✅ OK" if rep.ok else "❌ 문제 있음")
+    for c in rep.checks:
+        (st.success if c.ok else st.error)(f"{c.name}: {c.detail}")
+
+    st.subheader("LLM 비용")
+    cs = cost_summary(db, days=30)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("오늘 비용", f"${cs['today_usd']:.4f}", f"예산 ${cs['budget_usd']:.2f}")
+    c2.metric("30일 누적", f"${cs['total_usd']:.4f}")
+    c3.metric("예산 상태", "초과 ⚠️" if cs["over_budget"] else "여유 ✅")
+    if cs["by_date"]:
+        bdf = pd.DataFrame(cs["by_date"])
+        fig = go.Figure(go.Bar(x=bdf["bucket_date"], y=bdf["cost_usd"],
+                               marker_color="#1f77b4"))
+        fig.add_hline(y=cs["budget_usd"], line_dash="dash", line_color=NEG,
+                      annotation_text="일 예산")
+        fig.update_layout(title="일별 LLM 비용($)", height=280, margin=dict(t=40, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+    if cs["by_model"]:
+        st.write("모델별 비용")
+        st.dataframe(pd.DataFrame(cs["by_model"]), use_container_width=True)
+
+
 def main():
     st.sidebar.title("📡 Sentiment Radar")
     theme = _theme_pick()
-    page = st.sidebar.radio("페이지", ["오늘의 뷰", "시계열 추이", "소스 드릴다운", "설정"])
+    page = st.sidebar.radio("페이지",
+                            ["오늘의 뷰", "시계열 추이", "소스 드릴다운", "설정", "운영/비용"])
     db = _db()
     if page == "오늘의 뷰":
         page_today(db, theme)
@@ -257,8 +288,10 @@ def main():
         page_timeseries(db, theme)
     elif page == "소스 드릴다운":
         page_sources(db, theme)
-    else:
+    elif page == "설정":
         page_settings(db, theme)
+    else:
+        page_ops(db, theme)
 
     st.sidebar.markdown("---")
     st.sidebar.caption("⚠️ 이 시스템의 출력은 참고용 정량화 도구이며 **매매 신호가 아닙니다**.")
