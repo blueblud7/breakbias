@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from sentiment_radar import collectors  # noqa: E402
+from sentiment_radar.attention import collect_trends  # noqa: E402
 from sentiment_radar.config import list_themes, load_theme, settings  # noqa: E402
 from sentiment_radar.db import get_db  # noqa: E402
 from sentiment_radar.pipeline import dedup_items  # noqa: E402
@@ -35,7 +36,7 @@ def setup_logging() -> None:
     )
 
 
-def run(theme_name: str, sources: list[str] | None) -> int:
+def run(theme_name: str, sources: list[str] | None, *, with_trends: bool = True) -> int:
     log = logging.getLogger("collect")
     theme = load_theme(theme_name)
     log.info("테마 '%s' (%s) 수집 시작", theme.display_name, theme.theme)
@@ -53,18 +54,23 @@ def run(theme_name: str, sources: list[str] | None) -> int:
         log.info("  [%s] %d건 수집", stype, len(got))
         all_items.extend(got)
 
-    if not all_items:
-        log.warning("수집된 아이템이 없습니다. (API 키 설정 여부 확인)")
-        return 0
-
     lookback = int(settings().get("dedup", {}).get("lookback_days", 3))
+    inserted = 0
     with get_db() as db:
-        existing = db.recent_hashes(theme.theme, lookback)
-        deduped = dedup_items(all_items, existing_hashes=existing)
-        inserted = db.insert_items(deduped)
-        total = db.count_items(theme.theme)
+        if all_items:
+            existing = db.recent_hashes(theme.theme, lookback)
+            deduped = dedup_items(all_items, existing_hashes=existing)
+            inserted = db.insert_items(deduped)
+            total = db.count_items(theme.theme)
+            log.info("저장 완료: 신규 %d건 (테마 누적 %d건)", inserted, total)
+        else:
+            log.warning("수집된 아이템이 없습니다. (API 키 설정 여부 확인)")
 
-    log.info("저장 완료: 신규 %d건 (테마 누적 %d건)", inserted, total)
+        # Google Trends 관심도 (attention 별도 트랙)
+        if with_trends and theme.trends_pairs:
+            n = collect_trends(db, theme)
+            log.info("  [trends] 관심도 지표 %d건 저장", n)
+
     return inserted
 
 
@@ -77,16 +83,18 @@ def main() -> None:
         help="쉼표구분 소스 목록 (기본: 전체). 예: news_kr,news_global",
     )
     parser.add_argument("--list-themes", action="store_true", help="테마 목록 출력")
+    parser.add_argument("--no-trends", action="store_true", help="Google Trends 수집 생략")
     args = parser.parse_args()
 
     if args.list_themes:
         print("등록된 테마:", ", ".join(list_themes()) or "(없음)")
+        print("사용가능 소스:", ", ".join(collectors.available()))
         return
     if not args.theme:
         parser.error("--theme 를 지정하세요 (또는 --list-themes).")
 
     sources = [s.strip() for s in args.sources.split(",")] if args.sources else None
-    run(args.theme, sources)
+    run(args.theme, sources, with_trends=not args.no_trends)
 
 
 if __name__ == "__main__":

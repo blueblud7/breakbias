@@ -47,6 +47,14 @@ relevance_must_include_any:
   - nvidia
   - 엔비디아
 
+# --- Google Trends 관심도 키워드 쌍 (attention 별도 트랙) ---
+# 방향성 키워드 쌍의 상대 검색량 비율을 보조 지표로 활용
+trends_pairs:
+  - up: "반도체 매수"
+    down: "반도체 폭락"
+  - up: "삼성전자 매수"
+    down: "삼성전자 매도"
+
 # --- 가격 오버레이 (M4) ---
 price_symbols:
   kospi: "1001"        # pykrx 지수코드 (코스피)

@@ -42,3 +42,20 @@ dedup:
 llm:
   daily_budget_usd: 2.0            # 초과 시 수집만 하고 분류 스킵
   classify_max_retries: 1          # JSON 파싱 실패 시 재시도 횟수
+
+# --- 소스별 세부 설정 (M3) ---
+sources:
+  youtube:
+    max_results_per_keyword: 15    # 키워드당 상위 N개 영상
+    use_transcript: true           # 자막 추출 시도 (앞 3000자만)
+    # 국내/해외 채널 화이트리스트 (channel_id 기준, 비우면 전체 허용)
+    channels_kr: []                # 예: ["UCxxxx삼프로", "UCyyyy슈카"]
+    channels_global: []
+  reddit:
+    subreddits: [stocks, wallstreetbets, Semiconductors, investing]
+    limit_per_subreddit: 50
+    sort: hot                      # hot | new | top
+  report:
+    # 네이버금융 리서치 (시장정보/종목분석). robots.txt 준수 + 요청 간격 준수
+    naver_research_url: "https://finance.naver.com/research/market_info_list.naver"
+    max_pages: 2

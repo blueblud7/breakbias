@@ -68,7 +68,9 @@ src/sentiment_radar/
   config.py                # 설정 로더
   models.py                # Item 표준 스키마
   db/{schema.sql,database.py}
-  collectors/              # BaseCollector + naver_news + newsapi (+ M3에서 확장)
+  collectors/              # BaseCollector + 6종: naver_news/newsapi/naver_blog/
+                           #   youtube/reddit/report_naver (+ twitter 스텁)
+  attention.py             # Google Trends 관심도 트랙 (센티먼트와 분리)
   llm/                     # classifier(gpt-5-nano, 방어파싱·재시도) + cost(예산가드)
   pipeline/
     dedup.py               # URL 정규화 + rapidfuzz 제목 유사도
@@ -81,14 +83,14 @@ src/sentiment_radar/
 collect.py                 # 수집 CLI
 analyze.py                 # 분류 + 집계 CLI
 journal.py                 # 예측/규칙 CLI (M6)
-tests/                     # pytest (42개)
+tests/                     # pytest (50개)
 ```
 
 ## 마일스톤 진행
 
 - [x] **M1** — 골격 + DB 스키마 + config + 뉴스 수집기 2종(Naver/NewsAPI) + dedup
 - [x] **M2** — gpt-5-nano 분류 파이프라인(재시도·비용로깅·예산가드) + 집계 엔진 + NSI
-- [ ] **M3** — 유튜브 / 블로그 / 리포트 스크레이퍼 / Google Trends / Reddit
+- [x] **M3** — 블로그 / 유튜브 / 리포트 스크레이퍼 / Reddit + Google Trends(attention)
 - [ ] **M4** — deepseek 총평 + Streamlit 4페이지 + 가격 오버레이
 - [ ] **M5** — APScheduler 자동 수집 + 실패 알림 + 30일 백필 + 비용 대시보드
 - [x] **M6** — 예측 일지(Brier·캘리브레이션) + 사전 규칙(수정이력·알림) — *확증편향 교정 코어*

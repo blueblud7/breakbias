@@ -362,6 +362,48 @@ class Database:
             (rule_id,),
         ).fetchall()
 
+    # --- M3: attention (Google Trends 등) ---
+    def upsert_attention(self, *, theme: str, bucket_date: str, metric: str,
+                         keyword: str, value: float | None, collected_at: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO attention_metrics (theme, bucket_date, metric, keyword, value, collected_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(theme, bucket_date, metric, keyword) DO UPDATE SET
+                value = excluded.value, collected_at = excluded.collected_at
+            """,
+            (theme, bucket_date, metric, keyword, value, collected_at),
+        )
+        self.conn.commit()
+
+    def fetch_attention(self, theme: str, metric: str | None = None,
+                        limit: int = 90) -> list[sqlite3.Row]:
+        if metric:
+            return self.conn.execute(
+                """SELECT * FROM attention_metrics WHERE theme = ? AND metric = ?
+                   ORDER BY bucket_date DESC LIMIT ?""",
+                (theme, metric, limit),
+            ).fetchall()
+        return self.conn.execute(
+            "SELECT * FROM attention_metrics WHERE theme = ? ORDER BY bucket_date DESC LIMIT ?",
+            (theme, limit),
+        ).fetchall()
+
+    # --- M3/M7: price_history ---
+    def upsert_price(self, *, symbol: str, bucket_date: str, close: float,
+                     ret: float | None, collected_at: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO price_history (symbol, bucket_date, close, ret, collected_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(symbol, bucket_date) DO UPDATE SET
+                close = excluded.close, ret = excluded.ret,
+                collected_at = excluded.collected_at
+            """,
+            (symbol, bucket_date, close, ret, collected_at),
+        )
+        self.conn.commit()
+
     def fetch_aggregates_asc(self, theme: str, scope: str, limit: int) -> list[sqlite3.Row]:
         """최근 N일을 날짜 오름차순으로 (규칙의 consecutive_days 평가용)."""
         rows = self.conn.execute(

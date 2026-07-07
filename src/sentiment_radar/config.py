@@ -30,6 +30,7 @@ class Theme:
     keywords_en: list[str]
     relevance_must_include_any: list[str]
     price_symbols: dict[str, str] = field(default_factory=dict)
+    trends_pairs: list[dict[str, str]] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -72,6 +73,7 @@ def load_theme(name: str) -> Theme:
         keywords_en=data.get("keywords_en", []),
         relevance_must_include_any=data.get("relevance_must_include_any", []),
         price_symbols=data.get("price_symbols", {}),
+        trends_pairs=data.get("trends_pairs", []),
         raw=data,
     )
 
